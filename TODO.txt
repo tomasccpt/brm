@@ -1,0 +1,4 @@
+1. Restringir movimento da mão direita
+1.1 Colocar a linha divisória no vídeo
+1.2 Fazer caixa o local onde se vai colocar a mão.
+
