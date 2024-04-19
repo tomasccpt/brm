@@ -13,17 +13,21 @@ VMAX = 170
 VMAX_CLAW = 255
 VMIN_CLAW = 100
 L1 = 6
-L2 = 4.5
+L2 = 5
 L3 = 6.5
 REACH = L2 + L3
 MAIN_HAND = "Right"
 GLOVES = False
+
 
 # * Constants for rendering the hand landmarks
 MARGIN = 10  # pixels
 FONT_SIZE = 1
 FONT_THICKNESS = 1
 HANDEDNESS_TEXT_COLOR = (88, 205, 54)  # vibrant green
+
+# * Hand Positioning Constants
+SCREEN_MARGINS = ((0.3, 0.95), (0.1, 0.9))
 
 
 def draw_landmarks_on_image(rgb_image, detection_result, robot, lookup_tables, ax = None, main_hand = MAIN_HAND):
@@ -60,6 +64,9 @@ def draw_landmarks_on_image(rgb_image, detection_result, robot, lookup_tables, a
         cv2.putText(annotated_image, f"{handedness.classification[0].label[0]}",
                     (text_x, text_y), cv2.FONT_HERSHEY_DUPLEX,
                     FONT_SIZE, HANDEDNESS_TEXT_COLOR, FONT_THICKNESS, cv2.LINE_AA)
+
+        # display margins
+        cv2.rectangle(annotated_image, (int(SCREEN_MARGINS[0][0]*width), int(SCREEN_MARGINS[1][0]*height)), (int(SCREEN_MARGINS[0][1]*width), int(SCREEN_MARGINS[1][1]*height)), (0, 255, 0), 2)
 
         move_robot(robot, lookup_tables, np.array([z_coordinates, x_coordinates, y_coordinates]), hand_mid_points[1 - idx][1])
 
@@ -108,13 +115,20 @@ def move_robot(robot, lookup_tables, main_points, second_hand_bottom):
     fingers = measure_fingers(main_points)
     hand_mid_point = (main_points[:, 5] + main_points[:, 9] + main_points[:, 13] + main_points[:, 17]+4*main_points[:, 0]) / 8
 
-    min_height = 0.1
-    max_height = 10
-    screen_margins = (0.1, 0.8)
 
-    z = max(0, min((second_hand_bottom + 1 - screen_margins[0])/(screen_margins[1] - screen_margins[0]), 1)) * (max_height-min_height) + min_height
+    z = (second_hand_bottom + 1 - SCREEN_MARGINS[1][0])/(SCREEN_MARGINS[1][1] - SCREEN_MARGINS[1][0])
 
-    desired_coords = np.array([2*(hand_mid_point[1]-0.5)*REACH, (hand_mid_point[2]+1) * REACH,z])
+    x = ((hand_mid_point[1] - SCREEN_MARGINS[0][0])/(SCREEN_MARGINS[0][1] - SCREEN_MARGINS[0][0]) - 0.5) * 2
+    y = (hand_mid_point[2] - SCREEN_MARGINS[1][0])/(SCREEN_MARGINS[1][1] - SCREEN_MARGINS[1][0])
+
+    desired_coords = np.array([x, y, z])
+
+    #check if desired_coords is reachable
+    if np.any(np.abs(desired_coords) >1) or np.any(np.abs(desired_coords) < 0):
+        print("Desired coordinates out of reach", desired_coords)
+        return
+
+    desired_coords = desired_coords*REACH
 
     teta0 = (np.arctan(desired_coords[1]/desired_coords[0])/np.pi) % 1
 
@@ -133,7 +147,7 @@ def move_robot(robot, lookup_tables, main_points, second_hand_bottom):
     claw_sim.update_arm_plot(robot, random_v=False, voltages=[V0, V1, V2, V3])
     print([V0, V1, V2, V3])
     uc.send([V0, V1, V2, V3])
-    
+
 
 def main():
     # * Initialize Mediapipe Hands model
