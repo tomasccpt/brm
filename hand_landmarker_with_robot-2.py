@@ -18,6 +18,7 @@ L3 = 6.5
 REACH = L2 + L3
 MAIN_HAND = "Right"
 GLOVES = False
+voltages = [VMAX-VMIN, VMAX-VMIN, VMAX-VMIN, VMAX_CLAW-VMIN_CLAW]
 
 
 # * Constants for rendering the hand landmarks
@@ -111,6 +112,7 @@ def gen_lt():
 
 
 def move_robot(robot, lookup_tables, main_points, second_hand_bottom):
+    global voltages
 
     fingers = measure_fingers(main_points)
     hand_mid_point = (main_points[:, 5] + main_points[:, 9] + main_points[:, 13] + main_points[:, 17]+4*main_points[:, 0]) / 8
@@ -134,7 +136,12 @@ def move_robot(robot, lookup_tables, main_points, second_hand_bottom):
 
     alfa = (desired_coords[1]**2 + desired_coords[0]**2)**0.5
 
-    table_math = (lookup_tables[0]-alfa)**2 + (lookup_tables[1]-desired_coords[2])**2
+    dist_vector = np.linspace(VMIN,VMAX, VMAX - VMIN+1)
+    #make it a table of the same size as the lookup tables
+    dist_table_hor = np.tile(dist_vector, (VMAX - VMIN + 1, 1))   - voltages[1]
+    dist_table_ver = np.tile(dist_vector, (VMAX - VMIN + 1, 1)).T - voltages[2]
+
+    table_math = (lookup_tables[0]-alfa)**2 + (lookup_tables[1]-desired_coords[2])**2 + 0.001*(dist_table_hor**2 + dist_table_ver**2)
 
     idx = np.argmin(table_math)
 
@@ -143,10 +150,12 @@ def move_robot(robot, lookup_tables, main_points, second_hand_bottom):
     V2 = int(idx % (VMAX - VMIN + 1) + VMIN)
     V3 = int((1 - np.arcsin(min(max(fingers - 0.3, 0), 1))*2/np.pi)*(VMAX_CLAW - VMIN_CLAW) + VMIN_CLAW)
 
+    voltages = [V0, V1, V2, V3]
+
     # TODO: Comment this line and send Vs to Arduino
-    claw_sim.update_arm_plot(robot, random_v=False, voltages=[V0, V1, V2, V3])
-    print([V0, V1, V2, V3])
-    uc.send([V0, V1, V2, V3])
+    claw_sim.update_arm_plot(robot, random_v=False, voltages=voltages)
+    print(voltages)
+    uc.send(voltages)
 
 
 def main():
