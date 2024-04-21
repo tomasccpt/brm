@@ -98,15 +98,19 @@ def alfa(theta1, theta2):
 def z(theta1, theta2):
     return L1*np.sin(theta1) + L2*np.sin(theta1 + theta2 - np.pi)
 
+def deg2rad(deg):
+    return deg*np.pi/180
 
 def gen_lt():
     t_alfa = np.zeros((VMAX - VMIN + 1, VMAX - VMIN + 1))
     t_z = np.zeros((VMAX - VMIN + 1, VMAX - VMIN + 1))
-
     for n in range(VMIN, VMAX + 1):
         for m in range(VMIN, VMAX + 1):
-            t_alfa[n - VMIN, m - VMIN] = alfa(n/255*np.pi, m/255*np.pi)
-            t_z[n - VMIN, m - VMIN] = z(n/255*np.pi, m/255*np.pi)
+            #n is V1, m is V2
+            nm = [n*-0.0211 + 3.5848, m*0.0178 + 0.3473]
+            t_alfa[n - VMIN, m - VMIN] = alfa(*nm)
+            t_z[n - VMIN, m - VMIN] = z(*nm)
+
 
     return [t_alfa, t_z]
 
@@ -142,10 +146,20 @@ def move_robot(robot, lookup_tables, main_points, second_hand_bottom):
     dist_table_ver = np.tile(dist_vector, (VMAX - VMIN + 1, 1)).T - voltages[2]
 
     table_math = (lookup_tables[0]-alfa)**2 + (lookup_tables[1]-desired_coords[2])**2 + 0.001*(dist_table_hor**2 + dist_table_ver**2)
-
+    
     idx = np.argmin(table_math)
 
-    V0 = int((teta0)*(VMAX - VMIN) + VMIN)
+    #normalize lookup table
+    table_math = (table_math - np.min(table_math))/(np.max(table_math) - np.min(table_math))
+    table_math = table_math.astype(np.float32)  # convert to CV_32F
+    table_math = cv2.cvtColor(table_math, cv2.COLOR_GRAY2BGR)
+    # display the lookup table
+    table_math[idx//(VMAX - VMIN + 1), idx%(VMAX - VMIN + 1)] = [255, 0, 0]
+    cv2.imshow("Lookup Table", cv2.resize(table_math, (400, 400)))    
+    cv2.waitKey(1)
+
+
+    V0 = int((teta0+75.4)/0.8408)
     V1 = int(idx // (VMAX - VMIN + 1) + VMIN)
     V2 = int(idx % (VMAX - VMIN + 1) + VMIN)
     V3 = int((1 - np.arcsin(min(max(fingers - 0.3, 0), 1))*2/np.pi)*(VMAX_CLAW - VMIN_CLAW) + VMIN_CLAW)
