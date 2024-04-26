@@ -136,7 +136,7 @@ def move_robot(robot, lookup_tables, main_points, second_hand_bottom):
 
     desired_coords = desired_coords*REACH
 
-    teta0 = (np.arctan(desired_coords[1]/desired_coords[0])/np.pi) % 1
+    teta0 = (np.arctan(desired_coords[1]/desired_coords[0])) % np.pi - np.pi/2
 
     alfa = (desired_coords[1]**2 + desired_coords[0]**2)**0.5
 
@@ -150,16 +150,16 @@ def move_robot(robot, lookup_tables, main_points, second_hand_bottom):
     idx = np.argmin(table_math)
 
     #normalize lookup table
-    table_math = (table_math - np.min(table_math))/(np.max(table_math) - np.min(table_math))
-    table_math = table_math.astype(np.float32)  # convert to CV_32F
-    table_math = cv2.cvtColor(table_math, cv2.COLOR_GRAY2BGR)
+    #table_math = (table_math - np.min(table_math))/(np.max(table_math) - np.min(table_math))
+    #table_math = table_math.astype(np.float32)  # convert to CV_32F
+    #table_math = cv2.cvtColor(table_math, cv2.COLOR_GRAY2BGR)
     # display the lookup table
-    table_math[idx//(VMAX - VMIN + 1), idx%(VMAX - VMIN + 1)] = [255, 0, 0]
-    cv2.imshow("Lookup Table", cv2.resize(table_math, (400, 400)))    
-    cv2.waitKey(1)
+    #table_math[idx//(VMAX - VMIN + 1), idx%(VMAX - VMIN + 1)] = [255, 0, 0]
+    # cv2.imshow("Lookup Table", cv2.resize(table_math, (400, 400)))    
+    # cv2.waitKey(1)
 
 
-    V0 = int((teta0+75.4)/0.8408)
+    V0 = int((teta0+1.3158)/0.0147)
     V1 = int(idx // (VMAX - VMIN + 1) + VMIN)
     V2 = int(idx % (VMAX - VMIN + 1) + VMIN)
     V3 = int((1 - np.arcsin(min(max(fingers - 0.3, 0), 1))*2/np.pi)*(VMAX_CLAW - VMIN_CLAW) + VMIN_CLAW)
@@ -168,7 +168,7 @@ def move_robot(robot, lookup_tables, main_points, second_hand_bottom):
 
     # TODO: Comment this line and send Vs to Arduino
     claw_sim.update_arm_plot(robot, random_v=False, voltages=voltages)
-    print(voltages)
+    # print(voltages)
     uc.send(voltages)
 
 
