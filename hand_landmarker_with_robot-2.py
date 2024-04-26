@@ -18,6 +18,7 @@ L3 = 6.5
 REACH = L2 + L3
 MAIN_HAND = "Right"
 GLOVES = False
+voltages = [VMAX-VMIN, VMAX-VMIN, VMAX-VMIN, VMAX_CLAW-VMIN_CLAW]
 
 
 # * Constants for rendering the hand landmarks
@@ -97,20 +98,25 @@ def alfa(theta1, theta2):
 def z(theta1, theta2):
     return L1*np.sin(theta1) + L2*np.sin(theta1 + theta2 - np.pi)
 
+def deg2rad(deg):
+    return deg*np.pi/180
 
 def gen_lt():
     t_alfa = np.zeros((VMAX - VMIN + 1, VMAX - VMIN + 1))
     t_z = np.zeros((VMAX - VMIN + 1, VMAX - VMIN + 1))
-
     for n in range(VMIN, VMAX + 1):
         for m in range(VMIN, VMAX + 1):
-            t_alfa[n - VMIN, m - VMIN] = alfa(n, m)
-            t_z[n - VMIN, m - VMIN] = z(n, m)
+            #n is V1, m is V2
+            nm = [n*-0.0211 + 3.5848, m*0.0178 + 0.3473]
+            t_alfa[n - VMIN, m - VMIN] = alfa(*nm)
+            t_z[n - VMIN, m - VMIN] = z(*nm)
+
 
     return [t_alfa, t_z]
 
 
 def move_robot(robot, lookup_tables, main_points, second_hand_bottom):
+    global voltages
 
     fingers = measure_fingers(main_points)
     hand_mid_point = (main_points[:, 5] + main_points[:, 9] + main_points[:, 13] + main_points[:, 17]+4*main_points[:, 0]) / 8
@@ -134,19 +140,36 @@ def move_robot(robot, lookup_tables, main_points, second_hand_bottom):
 
     alfa = (desired_coords[1]**2 + desired_coords[0]**2)**0.5
 
-    table_math = (lookup_tables[0]-alfa)**2 + (lookup_tables[1]-desired_coords[2])**2
+    dist_vector = np.linspace(VMIN,VMAX, VMAX - VMIN+1)
+    #make it a table of the same size as the lookup tables
+    dist_table_hor = np.tile(dist_vector, (VMAX - VMIN + 1, 1))   - voltages[1]
+    dist_table_ver = np.tile(dist_vector, (VMAX - VMIN + 1, 1)).T - voltages[2]
 
+    table_math = (lookup_tables[0]-alfa)**2 + (lookup_tables[1]-desired_coords[2])**2 + 0.001*(dist_table_hor**2 + dist_table_ver**2)
+    
     idx = np.argmin(table_math)
 
-    V0 = int((teta0)*(VMAX - VMIN) + VMIN)
+    #normalize lookup table
+    table_math = (table_math - np.min(table_math))/(np.max(table_math) - np.min(table_math))
+    table_math = table_math.astype(np.float32)  # convert to CV_32F
+    table_math = cv2.cvtColor(table_math, cv2.COLOR_GRAY2BGR)
+    # display the lookup table
+    table_math[idx//(VMAX - VMIN + 1), idx%(VMAX - VMIN + 1)] = [255, 0, 0]
+    cv2.imshow("Lookup Table", cv2.resize(table_math, (400, 400)))    
+    cv2.waitKey(1)
+
+
+    V0 = int((teta0+75.4)/0.8408)
     V1 = int(idx // (VMAX - VMIN + 1) + VMIN)
     V2 = int(idx % (VMAX - VMIN + 1) + VMIN)
     V3 = int((1 - np.arcsin(min(max(fingers - 0.3, 0), 1))*2/np.pi)*(VMAX_CLAW - VMIN_CLAW) + VMIN_CLAW)
 
+    voltages = [V0, V1, V2, V3]
+
     # TODO: Comment this line and send Vs to Arduino
-    claw_sim.update_arm_plot(robot, random_v=False, voltages=[V0, V1, V2, V3])
-    print([V0, V1, V2, V3])
-    uc.send([V0, V1, V2, V3])
+    claw_sim.update_arm_plot(robot, random_v=False, voltages=voltages)
+    print(voltages)
+    uc.send(voltages)
 
 
 def main():
