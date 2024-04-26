@@ -1,7 +1,7 @@
 import serial
 import time
 
-ROBOT = False
+ROBOT = True
 if ROBOT:
     ser = serial.Serial('COM3', 9600)
     last_timestamp = 0
@@ -33,3 +33,11 @@ else:
     def send(values):
         print(values)
         time.sleep(0.1)
+
+
+
+while True:
+    vstring = input("> ")
+    vs = vstring.split(" ")
+    values = [int(v) for v in vs] 
+    send(values)

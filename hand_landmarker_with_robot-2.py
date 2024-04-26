@@ -104,8 +104,8 @@ def gen_lt():
 
     for n in range(VMIN, VMAX + 1):
         for m in range(VMIN, VMAX + 1):
-            t_alfa[n - VMIN, m - VMIN] = alfa(n/255*np.pi, m/255*np.pi)
-            t_z[n - VMIN, m - VMIN] = z(n/255*np.pi, m/255*np.pi)
+            t_alfa[n - VMIN, m - VMIN] = alfa(n, m)
+            t_z[n - VMIN, m - VMIN] = z(n, m)
 
     return [t_alfa, t_z]
 

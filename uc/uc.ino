@@ -16,11 +16,6 @@ void setup() {
   for (size_t i = 0; i < len(Servos); ++i) {
     Servos[i].attach(Ports[i]);
   }
-  Servos[0].attach(4);
-  Servos[1].attach(5);
-  Servos[2].attach(6);
-  Servos[3].attach(7);
-  pinMode(3, INPUT);
 }
 
 void loop() {
@@ -32,7 +27,6 @@ void loop() {
     unsynced = true;
     for (size_t i = 0; i < len(ReadVal); ++i) {
       ReadVal[i] = (int)*(unsigned char*)(readBuf + i);
-      ReadVal[i] = clamp(MinAngle[i], ReadVal[i], MaxAngle[i]);
     }
   }
   
