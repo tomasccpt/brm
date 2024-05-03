@@ -137,7 +137,7 @@ def recognize_gesture(points):
     points = [(points.landmark[i].x, points.landmark[i].y, points.landmark[i].z) for i in range(len(points.landmark))]
 
     # Set up hysterisis thresholds
-    threshold_to_activate = 0.8
+    threshold_to_activate = 0.7
 
     if measure_fingers(np.array(points).T) >= threshold_to_activate:
         return locked
@@ -201,7 +201,7 @@ def move_robot(robot, lookup_tables, main_points, second_hand_bottom, second_han
     voltages = [V0, V1, V2, V3]
     # print(voltages)
     # TODO: Comment this line and send Vs to Arduino
-    claw_sim.update_arm_plot(robot, random_v=False, voltages=voltages)
+    # claw_sim.update_arm_plot(robot, random_v=False, voltages=voltages)
     # print(voltages)
     uc.send(voltages)
 
