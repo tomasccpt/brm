@@ -1,7 +1,7 @@
 import serial
 import time
 
-ROBOT = True
+ROBOT = 0
 if ROBOT:
     ser = serial.Serial('COM3', 9600)
     last_timestamp = 0
@@ -22,11 +22,12 @@ if ROBOT:
         global ser
         while True:
             try:
+                print(values)
                 ser.write(bytes(values))
                 break
             except:
                 time.sleep(0.1)
-                print(values)
+                print("morreu: ", values)
                 ser.close()
                 while True:
                     try:
@@ -34,6 +35,7 @@ if ROBOT:
                         break
                     except:
                         time.sleep(0.1)
+                        print("não renasceu")
 else:
     def send(values):
         print(values)

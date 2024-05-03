@@ -19,6 +19,8 @@ REACH = L2 + L3
 MAIN_HAND = "Right"
 GLOVES = False
 voltages = [VMAX-VMIN, VMAX-VMIN, VMAX-VMIN, VMAX_CLAW-VMIN_CLAW]
+locked = False
+locked_timer = 0
 
 
 # * Constants for rendering the hand landmarks
@@ -29,7 +31,6 @@ HANDEDNESS_TEXT_COLOR = (88, 205, 54)  # vibrant green
 
 # * Hand Positioning Constants
 SCREEN_MARGINS = ((0.3, 0.95), (0.1, 0.9))
-
 
 def draw_landmarks_on_image(rgb_image, detection_result, robot, lookup_tables, ax = None, main_hand = MAIN_HAND):
     hand_landmarks_list = detection_result.multi_hand_landmarks
@@ -44,6 +45,8 @@ def draw_landmarks_on_image(rgb_image, detection_result, robot, lookup_tables, a
 
         hand_landmarks = hand_landmarks_list[idx]
         handedness = handedness_list[idx]
+
+        second_hand_landmarks = hand_landmarks_list[1 - idx]
 
         # * Draw the hand landmarks.
         solutions.drawing_utils.draw_landmarks(
@@ -69,7 +72,10 @@ def draw_landmarks_on_image(rgb_image, detection_result, robot, lookup_tables, a
         # display margins
         cv2.rectangle(annotated_image, (int(SCREEN_MARGINS[0][0]*width), int(SCREEN_MARGINS[1][0]*height)), (int(SCREEN_MARGINS[0][1]*width), int(SCREEN_MARGINS[1][1]*height)), (0, 255, 0), 2)
 
-        move_robot(robot, lookup_tables, np.array([z_coordinates, x_coordinates, y_coordinates]), hand_mid_points[1 - idx][1])
+        # display locked status
+        cv2.putText(annotated_image, "Locked" if locked else "Unlocked", (int(width*0.1), int(height*0.1)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0) if not locked else (0, 0, 255), 2)
+
+        move_robot(robot, lookup_tables, np.array([z_coordinates, x_coordinates, y_coordinates]), hand_mid_points[1 - idx][1], second_hand_landmarks)
 
     return annotated_image
 
@@ -114,9 +120,32 @@ def gen_lt():
 
     return [t_alfa, t_z]
 
+def recognize_gesture(points):
+    """
+    Recognizes the gesture of the hand
 
-def move_robot(robot, lookup_tables, main_points, second_hand_bottom):
-    global voltages
+    If the locked was changed in the last 10 frames, it will return the current locked status.
+    Else, it will change the locked status if the fingers are closed.
+    """
+
+    global locked
+    global locked_timer
+
+    if locked_timer > 0:
+        locked_timer -= 1
+        return locked
+    points = [(points.landmark[i].x, points.landmark[i].y, points.landmark[i].z) for i in range(len(points.landmark))]
+
+    # Set up hysterisis thresholds
+    threshold_to_activate = 0.8
+
+    if measure_fingers(np.array(points).T) >= threshold_to_activate:
+        return locked
+    locked_timer = 10
+    return not locked
+
+def move_robot(robot, lookup_tables, main_points, second_hand_bottom, second_hand_points):
+    global voltages, locked 
 
     fingers = measure_fingers(main_points)
     hand_mid_point = (main_points[:, 5] + main_points[:, 9] + main_points[:, 13] + main_points[:, 17]+4*main_points[:, 0]) / 8
@@ -128,6 +157,8 @@ def move_robot(robot, lookup_tables, main_points, second_hand_bottom):
     y = (hand_mid_point[2] - SCREEN_MARGINS[1][0])/(SCREEN_MARGINS[1][1] - SCREEN_MARGINS[1][0])
 
     desired_coords = np.array([x, y, z])
+
+    locked = recognize_gesture(second_hand_points)
 
     #check if desired_coords is reachable
     if np.any(np.abs(desired_coords) >1) or np.any(np.abs(desired_coords) < 0):
@@ -162,10 +193,13 @@ def move_robot(robot, lookup_tables, main_points, second_hand_bottom):
     V0 = int((teta0+1.3158)/0.0147)
     V1 = int(idx // (VMAX - VMIN + 1) + VMIN)
     V2 = int(idx % (VMAX - VMIN + 1) + VMIN)
-    V3 = int((1 - np.arcsin(min(max(fingers - 0.3, 0), 1))*2/np.pi)*(VMAX_CLAW - VMIN_CLAW) + VMIN_CLAW)
+    if not(locked):
+        V3 = int((1 - np.arcsin(min(max(fingers - 0.3, 0), 1))*2/np.pi)*(VMAX_CLAW - VMIN_CLAW) + VMIN_CLAW)
+    else:
+        V3 = voltages[3]
 
     voltages = [V0, V1, V2, V3]
-
+    # print(voltages)
     # TODO: Comment this line and send Vs to Arduino
     claw_sim.update_arm_plot(robot, random_v=False, voltages=voltages)
     # print(voltages)
