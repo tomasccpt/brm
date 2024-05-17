@@ -69,8 +69,17 @@ def draw_landmarks_on_image(rgb_image, detection_result, robot, lookup_tables, a
                     (text_x, text_y), cv2.FONT_HERSHEY_DUPLEX,
                     FONT_SIZE, HANDEDNESS_TEXT_COLOR, FONT_THICKNESS, cv2.LINE_AA)
 
-        # display margins
-        cv2.rectangle(annotated_image, (int(SCREEN_MARGINS[0][0]*width), int(SCREEN_MARGINS[1][0]*height)), (int(SCREEN_MARGINS[0][1]*width), int(SCREEN_MARGINS[1][1]*height)), (0, 255, 0), 2)
+        # # display margins
+        # cv2.rectangle(annotated_image, (int(SCREEN_MARGINS[0][0]*width), int(SCREEN_MARGINS[1][0]*height)), (int(SCREEN_MARGINS[0][1]*width), int(SCREEN_MARGINS[1][1]*height)), (0, 255, 0), 2)
+
+        # Define the origin of the graph (the intersection of the axes)
+        origin = (int(width * (SCREEN_MARGINS[0][0] + (SCREEN_MARGINS[0][1] - SCREEN_MARGINS[0][0]) / 2)), int(height * SCREEN_MARGINS[1][1]))
+
+        # Draw the x-axis
+        cv2.line(annotated_image, (0, origin[1]), (width, origin[1]), (0, 255, 0), 2)
+
+        # Draw the y-axis
+        cv2.line(annotated_image, (origin[0], 0), (origin[0], height), (0, 255, 0), 2)
 
         # display locked status
         cv2.putText(annotated_image, "Locked" if locked else "Unlocked", (int(width*0.1), int(height*0.1)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0) if not locked else (0, 0, 255), 2)

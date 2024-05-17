@@ -1,7 +1,7 @@
 import serial
 import time
 
-ROBOT = 1
+ROBOT = False
 if ROBOT:
     ser = serial.Serial('COM3', 9600)
     last_timestamp = 0
