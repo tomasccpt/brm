@@ -7,6 +7,10 @@ import claw_sim
 import time
 import uc
 
+import cProfile
+import pstats
+import io
+
 # * Robot restrictions
 VMIN = 10
 VMAX = 170
@@ -203,7 +207,8 @@ def move_robot(robot, lookup_tables, main_points, second_hand_bottom, second_han
     V1 = int(idx // (VMAX - VMIN + 1) + VMIN)
     V2 = int(idx % (VMAX - VMIN + 1) + VMIN)
     if not(locked):
-        V3 = int((1 - np.arcsin(min(max(fingers - 0.3, 0), 1))*2/np.pi)*(VMAX_CLAW - VMIN_CLAW) + VMIN_CLAW)
+        V3 = int((1 - min(max(fingers - 0.3, 0), 1))*(VMAX_CLAW - VMIN_CLAW) + VMIN_CLAW)
+        print(fingers)
     else:
         V3 = voltages[3]
 
@@ -221,7 +226,7 @@ def main():
     hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5)
 
     # * Open webcam
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(1)
 
     robot = claw_sim.Sunfounder()
     lookup_tables = gen_lt()
@@ -234,7 +239,7 @@ def main():
             continue
 
         # * Flip the image horizontally for a later selfie-view display
-        image = cv2.flip(image, 1)
+        image = cv2.rotate(image, cv2.ROTATE_180)
 
         # * Convert the BGR image to RGB
         if not GLOVES:
@@ -263,4 +268,21 @@ def main():
 
 
 if __name__ == "__main__":
+    """
+    
+    pr = cProfile.Profile()
+    pr.enable()
+
+
+    try:
+        stats = cProfile.run("main()")
+    except Exception:
+        pr.disable()
+        s = io.StringIO()
+        ps = pstats.Stats(pr, stream=s).sort_stats('tottime')
+        ps.print_stats()
+
+        with open('profile.txt', 'w+') as f:
+            f.write(s.getvalue())
+    """
     main()

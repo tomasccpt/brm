@@ -7,8 +7,6 @@ Servo Servos[4];
 int ReadVal[4] = { 0 };
 int PastVal[4] = { 0 };
 int Ports[4] = { 4, 5, 6, 7 };
-int MinAngle[4] = { 10, 10, 10, 100 };
-int MaxAngle[4] = { 170, 170, 170, 180 };
 
 void setup() {
   Serial.begin(9600);
