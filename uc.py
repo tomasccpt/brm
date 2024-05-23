@@ -22,7 +22,6 @@ if ROBOT:
         global ser
         while True:
             try:
-                print(values)
                 ser.write(bytes(values))
                 break
             except:
@@ -38,5 +37,4 @@ if ROBOT:
                         print("não renasceu")
 else:
     def send(values):
-        print(values)
         time.sleep(0.1)

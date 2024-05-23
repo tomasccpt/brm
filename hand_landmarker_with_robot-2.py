@@ -3,13 +3,12 @@ import mediapipe as mp
 import numpy as np
 import matplotlib.pyplot as plt
 from mediapipe import solutions
-import claw_sim
-import time
 import uc
 
-import cProfile
-import pstats
-import io
+# USER PREFERENCES
+MAIN_HAND = "Right"
+GLOVES = True
+IN_CONSOLE = True
 
 # * Robot restrictions
 VMIN = 10
@@ -20,8 +19,6 @@ L1 = 6
 L2 = 5
 L3 = 6.5
 REACH = L2 + L3
-MAIN_HAND = "Right"
-GLOVES = False
 voltages = [VMAX-VMIN, VMAX-VMIN, VMAX-VMIN, VMAX_CLAW-VMIN_CLAW]
 locked = False
 locked_timer = 0
@@ -35,8 +32,22 @@ HANDEDNESS_TEXT_COLOR = (88, 205, 54)  # vibrant green
 
 # * Hand Positioning Constants
 SCREEN_MARGINS = ((0.3, 0.95), (0.1, 0.9))
+if MAIN_HAND == "Left":
+    SCREEN_MARGINS = ((1 - SCREEN_MARGINS[0][1], 1 - SCREEN_MARGINS[0][0]), SCREEN_MARGINS[1])
 
-def draw_landmarks_on_image(rgb_image, detection_result, robot, lookup_tables, ax = None, main_hand = MAIN_HAND):
+
+if IN_CONSOLE:
+    def transform_camera(image):
+        image = cv2.rotate(image, cv2.ROTATE_180)
+        return image
+else:
+    def transform_camera(image):
+        image = cv2.flip(image, 1)
+        return image
+
+
+
+def draw_landmarks_on_image(rgb_image, detection_result, lookup_tables, ax = None, main_hand = MAIN_HAND):
     hand_landmarks_list = detection_result.multi_hand_landmarks
     handedness_list = detection_result.multi_handedness
     annotated_image = np.copy(rgb_image)
@@ -68,14 +79,6 @@ def draw_landmarks_on_image(rgb_image, detection_result, robot, lookup_tables, a
         text_x = int(min(x_coordinates) * width)
         text_y = int(max(y_coordinates) * -1 * height) - MARGIN
 
-        # * Draw handedness (left or right hand) on the image.
-        cv2.putText(annotated_image, f"{handedness.classification[0].label[0]}",
-                    (text_x, text_y), cv2.FONT_HERSHEY_DUPLEX,
-                    FONT_SIZE, HANDEDNESS_TEXT_COLOR, FONT_THICKNESS, cv2.LINE_AA)
-
-        # # display margins
-        # cv2.rectangle(annotated_image, (int(SCREEN_MARGINS[0][0]*width), int(SCREEN_MARGINS[1][0]*height)), (int(SCREEN_MARGINS[0][1]*width), int(SCREEN_MARGINS[1][1]*height)), (0, 255, 0), 2)
-
         # Define the origin of the graph (the intersection of the axes)
         origin = (int(width * (SCREEN_MARGINS[0][0] + (SCREEN_MARGINS[0][1] - SCREEN_MARGINS[0][0]) / 2)), int(height * SCREEN_MARGINS[1][1]))
 
@@ -88,7 +91,7 @@ def draw_landmarks_on_image(rgb_image, detection_result, robot, lookup_tables, a
         # display locked status
         cv2.putText(annotated_image, "Locked" if locked else "Unlocked", (int(width*0.1), int(height*0.1)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0) if not locked else (0, 0, 255), 2)
 
-        move_robot(robot, lookup_tables, np.array([z_coordinates, x_coordinates, y_coordinates]), hand_mid_points[1 - idx][1], second_hand_landmarks)
+        move_robot(lookup_tables, np.array([z_coordinates, x_coordinates, y_coordinates]), hand_mid_points[1 - idx][1], second_hand_landmarks)
 
     return annotated_image
 
@@ -157,7 +160,7 @@ def recognize_gesture(points):
     locked_timer = 10
     return not locked
 
-def move_robot(robot, lookup_tables, main_points, second_hand_bottom, second_hand_points):
+def move_robot(lookup_tables, main_points, second_hand_bottom, second_hand_points):
     global voltages, locked 
 
     fingers = measure_fingers(main_points)
@@ -208,15 +211,10 @@ def move_robot(robot, lookup_tables, main_points, second_hand_bottom, second_han
     V2 = int(idx % (VMAX - VMIN + 1) + VMIN)
     if not(locked):
         V3 = int((1 - min(max(fingers - 0.3, 0), 1))*(VMAX_CLAW - VMIN_CLAW) + VMIN_CLAW)
-        print(fingers)
     else:
         V3 = voltages[3]
 
     voltages = [V0, V1, V2, V3]
-    # print(voltages)
-    # TODO: Comment this line and send Vs to Arduino
-    # claw_sim.update_arm_plot(robot, random_v=False, voltages=voltages)
-    # print(voltages)
     uc.send(voltages)
 
 
@@ -226,9 +224,8 @@ def main():
     hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5)
 
     # * Open webcam
-    cap = cv2.VideoCapture(1)
+    cap = cv2.VideoCapture(0)
 
-    robot = claw_sim.Sunfounder()
     lookup_tables = gen_lt()
 
     while cap.isOpened():
@@ -239,7 +236,7 @@ def main():
             continue
 
         # * Flip the image horizontally for a later selfie-view display
-        image = cv2.rotate(image, cv2.ROTATE_180)
+        image = transform_camera(image)
 
         # * Convert the BGR image to RGB
         if not GLOVES:
@@ -252,9 +249,9 @@ def main():
 
         if results.multi_hand_landmarks:
             # * Visualize the hand landmarks
-            annotated_image = draw_landmarks_on_image(image, results, robot, lookup_tables)
+            annotated_image = draw_landmarks_on_image(image, results, lookup_tables)
             cv2.imshow('Hand Landmarks Detection', annotated_image)
-            plt.pause(0.001)  # Necessary for real-time updating of the plot
+            plt.pause(0.0001)  # Necessary for real-time updating of the plot
 
         else:
             cv2.imshow('Hand Landmarks Detection', image)
