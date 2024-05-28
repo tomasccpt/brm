@@ -7,7 +7,7 @@ import uc
 
 # USER PREFERENCES
 MAIN_HAND = "Right"
-GLOVES = True
+GLOVES = False
 IN_CONSOLE = True
 
 # * Robot restrictions
@@ -224,7 +224,7 @@ def main():
     hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5)
 
     # * Open webcam
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(1)
 
     lookup_tables = gen_lt()
 

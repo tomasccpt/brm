@@ -26,7 +26,7 @@ if ROBOT:
                 break
             except:
                 time.sleep(0.1)
-                print("morreu: ", values)
+                print("Robot has disconnected. Re connecting...: ", values)
                 ser.close()
                 while True:
                     try:
@@ -34,7 +34,7 @@ if ROBOT:
                         break
                     except:
                         time.sleep(0.1)
-                        print("não renasceu")
+                        print("Didn't reconnect")
 else:
     def send(values):
         time.sleep(0.1)
