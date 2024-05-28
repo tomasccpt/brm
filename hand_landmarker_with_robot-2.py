@@ -6,14 +6,14 @@ from mediapipe import solutions
 import uc
 
 # USER PREFERENCES
-MAIN_HAND = "Right"
+MAIN_HAND = "Right"     # "Right" or "Left"
 GLOVES = True
-IN_CONSOLE = True
+IN_CONSOLE = False
 
 # * Robot restrictions
 VMIN = 10
 VMAX = 170
-VMAX_CLAW = 255
+VMAX_CLAW = 180
 VMIN_CLAW = 100
 L1 = 6
 L2 = 5
@@ -76,8 +76,6 @@ def draw_landmarks_on_image(rgb_image, detection_result, lookup_tables, ax = Non
         x_coordinates = [landmark.x for landmark in hand_landmarks.landmark]
         y_coordinates = [-landmark.y for landmark in hand_landmarks.landmark]
         z_coordinates = [landmark.z for landmark in hand_landmarks.landmark]
-        text_x = int(min(x_coordinates) * width)
-        text_y = int(max(y_coordinates) * -1 * height) - MARGIN
 
         # Define the origin of the graph (the intersection of the axes)
         origin = (int(width * (SCREEN_MARGINS[0][0] + (SCREEN_MARGINS[0][1] - SCREEN_MARGINS[0][0]) / 2)), int(height * SCREEN_MARGINS[1][1]))
@@ -91,7 +89,7 @@ def draw_landmarks_on_image(rgb_image, detection_result, lookup_tables, ax = Non
         # display locked status
         cv2.putText(annotated_image, "Locked" if locked else "Unlocked", (int(width*0.1), int(height*0.1)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0) if not locked else (0, 0, 255), 2)
 
-        move_robot(lookup_tables, np.array([z_coordinates, x_coordinates, y_coordinates]), hand_mid_points[1 - idx][1], second_hand_landmarks)
+        move_robot(lookup_tables, np.array([z_coordinates, x_coordinates, y_coordinates]), second_hand_landmarks)
 
     return annotated_image
 
@@ -108,9 +106,9 @@ def finger_len(points, joints):
 
 
 def measure_fingers(points):
-    palm_size = np.array([dist(points[:, 5], points[:, 17]), dist(points[:, 0], points[:, 17])])
+    palm_size = dist(points[:, 5], points[:, 17])
 
-    return dist(points[:, 8], points[:, 4])/palm_size[0]
+    return dist(points[:, 8], points[:, 4])/palm_size
 
 
 def alfa(theta1, theta2):
@@ -136,7 +134,7 @@ def gen_lt():
 
     return [t_alfa, t_z]
 
-def recognize_gesture(points):
+def recognize_locked_gesture(points):
     """
     Recognizes the gesture of the hand
 
@@ -160,21 +158,24 @@ def recognize_gesture(points):
     locked_timer = 10
     return not locked
 
-def move_robot(lookup_tables, main_points, second_hand_bottom, second_hand_points):
+
+
+def move_robot(lookup_tables, main_points, second_hand_points):
     global voltages, locked 
 
     fingers = measure_fingers(main_points)
     hand_mid_point = (main_points[:, 5] + main_points[:, 9] + main_points[:, 13] + main_points[:, 17]+4*main_points[:, 0]) / 8
+    second_hand_y = (second_hand_points.landmark[5].y + second_hand_points.landmark[9].y + second_hand_points.landmark[13].y + second_hand_points.landmark[17].y + 4*second_hand_points.landmark[0].y)/8
 
 
-    z = (second_hand_bottom + 1 - SCREEN_MARGINS[1][0])/(SCREEN_MARGINS[1][1] - SCREEN_MARGINS[1][0])
+    z = (1 - second_hand_y - SCREEN_MARGINS[1][0])/(SCREEN_MARGINS[1][1] - SCREEN_MARGINS[1][0])
 
     x = ((hand_mid_point[1] - SCREEN_MARGINS[0][0])/(SCREEN_MARGINS[0][1] - SCREEN_MARGINS[0][0]) - 0.5) * 2
     y = (hand_mid_point[2] - SCREEN_MARGINS[1][0])/(SCREEN_MARGINS[1][1] - SCREEN_MARGINS[1][0])
 
     desired_coords = np.array([x, y, z])
 
-    locked = recognize_gesture(second_hand_points)
+    locked = recognize_locked_gesture(second_hand_points)
 
     #check if desired_coords is reachable
     if np.any(np.abs(desired_coords) >1) or np.any(np.abs(desired_coords) < 0):
@@ -183,27 +184,18 @@ def move_robot(lookup_tables, main_points, second_hand_bottom, second_hand_point
 
     desired_coords = desired_coords*REACH
 
-    teta0 = (np.arctan(desired_coords[1]/desired_coords[0])) % np.pi - np.pi/2
+    teta0 = -np.arctan(desired_coords[0]/desired_coords[1])
 
     alfa = (desired_coords[1]**2 + desired_coords[0]**2)**0.5
 
     dist_vector = np.linspace(VMIN,VMAX, VMAX - VMIN+1)
-    #make it a table of the same size as the lookup tables
+    # changing its size to be able to subtract it from the lookup table
     dist_table_hor = np.tile(dist_vector, (VMAX - VMIN + 1, 1))   - voltages[1]
     dist_table_ver = np.tile(dist_vector, (VMAX - VMIN + 1, 1)).T - voltages[2]
 
-    table_math = (lookup_tables[0]-alfa)**2 + (lookup_tables[1]-desired_coords[2])**2 + 0.001*(dist_table_hor**2 + dist_table_ver**2)
+    error_table = (lookup_tables[0]-alfa)**2 + (lookup_tables[1]-desired_coords[2])**2 + 0.001*(dist_table_hor**2 + dist_table_ver**2)
     
-    idx = np.argmin(table_math)
-
-    #normalize lookup table
-    #table_math = (table_math - np.min(table_math))/(np.max(table_math) - np.min(table_math))
-    #table_math = table_math.astype(np.float32)  # convert to CV_32F
-    #table_math = cv2.cvtColor(table_math, cv2.COLOR_GRAY2BGR)
-    # display the lookup table
-    #table_math[idx//(VMAX - VMIN + 1), idx%(VMAX - VMIN + 1)] = [255, 0, 0]
-    # cv2.imshow("Lookup Table", cv2.resize(table_math, (400, 400)))    
-    # cv2.waitKey(1)
+    idx = np.argmin(error_table)
 
 
     V0 = int((teta0+1.3158)/0.0147)
@@ -239,10 +231,10 @@ def main():
         image = transform_camera(image)
 
         # * Convert the BGR image to RGB
-        if not GLOVES:
-            image_to_process = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        else:
+        if GLOVES:
             image_to_process = image
+        else:
+            image_to_process = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
         # * Detect hand landmarks from the input image
         results = hands.process(image_to_process)
