@@ -1,57 +1,68 @@
 import cv2
 import mediapipe as mp
 import numpy as np
-from mediapipe.framework.formats import landmark_pb2
-from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 from mediapipe import solutions
-import claw_sim
+import uc
 
-#robot restrictions
-vmin = 14
-vmax = 240
-vmax_claw = 150
+# USER PREFERENCES
+MAIN_HAND = "Right"     # "Right" or "Left"
+GLOVES = True
+IN_CONSOLE = False
+
+# * Robot restrictions
+VMIN = 10
+VMAX = 170
+VMAX_CLAW = 180
+VMIN_CLAW = 100
+L1 = 6
+L2 = 5
+L3 = 6.5
+REACH = L2 + L3
+voltages = [VMAX-VMIN, VMAX-VMIN, VMAX-VMIN, VMAX_CLAW-VMIN_CLAW]
+locked = False
+locked_timer = 0
 
 
-
-
+# * Constants for rendering the hand landmarks
 MARGIN = 10  # pixels
 FONT_SIZE = 1
 FONT_THICKNESS = 1
 HANDEDNESS_TEXT_COLOR = (88, 205, 54)  # vibrant green
 
-
-#make color order the same as the ovelay
-colors = []
-for k in solutions.drawing_styles.get_default_hand_landmarks_style().keys():
-    temp = solutions.drawing_styles.get_default_hand_landmarks_style()[k].color
-    temp = [temp[2],temp[1],temp[0]]
-    colors.append(temp)
-
-colors = [*colors[:2],*colors[6:9],colors[2],*colors[9:12],colors[3],*colors[12:15],colors[4],*colors[15:18],colors[5],*colors[18:]]
+# * Hand Positioning Constants
+SCREEN_MARGINS = ((0.3, 0.95), (0.1, 0.9))
+if MAIN_HAND == "Left":
+    SCREEN_MARGINS = ((1 - SCREEN_MARGINS[0][1], 1 - SCREEN_MARGINS[0][0]), SCREEN_MARGINS[1])
 
 
+if IN_CONSOLE:
+    def transform_camera(image):
+        image = cv2.rotate(image, cv2.ROTATE_180)
+        return image
+else:
+    def transform_camera(image):
+        image = cv2.flip(image, 1)
+        return image
 
 
-def draw_landmarks_on_image(rgb_image, detection_result, ax = None, main_hand = "Right"):
+
+def draw_landmarks_on_image(rgb_image, detection_result, lookup_tables, ax = None, main_hand = MAIN_HAND):
     hand_landmarks_list = detection_result.multi_hand_landmarks
     handedness_list = detection_result.multi_handedness
     annotated_image = np.copy(rgb_image)
 
-
     if hand_landmarks_list and handedness_list and len(handedness_list) > 1:
-
-        hand_mid_points = [ (hand_landmarks.landmark[0].x, -hand_landmarks.landmark[0].y) for hand_landmarks in hand_landmarks_list]
+        hand_mid_points = [(hand_landmarks.landmark[0].x, -hand_landmarks.landmark[0].y) for hand_landmarks in hand_landmarks_list]
         idx = int(hand_mid_points[0][0] < hand_mid_points[1][0])
         if main_hand != "Right":
             idx = 1-idx
 
-
         hand_landmarks = hand_landmarks_list[idx]
-        handedness = handedness_list[idx]
 
+        second_hand_landmarks = hand_landmarks_list[1 - idx]
 
-        # Draw the hand landmarks.
+        # * Draw the hand landmarks.
         solutions.drawing_utils.draw_landmarks(
             annotated_image,
             hand_landmarks,
@@ -64,154 +75,185 @@ def draw_landmarks_on_image(rgb_image, detection_result, ax = None, main_hand = 
         x_coordinates = [landmark.x for landmark in hand_landmarks.landmark]
         y_coordinates = [-landmark.y for landmark in hand_landmarks.landmark]
         z_coordinates = [landmark.z for landmark in hand_landmarks.landmark]
-        text_x = int(min(x_coordinates) * width)
-        text_y = int(max(y_coordinates) * -1 * height) - MARGIN
 
+        # Define the origin of the graph (the intersection of the axes)
+        origin = (int(width * (SCREEN_MARGINS[0][0] + (SCREEN_MARGINS[0][1] - SCREEN_MARGINS[0][0]) / 2)), int(height * SCREEN_MARGINS[1][1]))
 
-        # Draw handedness (left or right hand) on the image.
-        cv2.putText(annotated_image, f"{handedness.classification[0].label[0]}",
-                    (text_x, text_y), cv2.FONT_HERSHEY_DUPLEX,
-                    FONT_SIZE, HANDEDNESS_TEXT_COLOR, FONT_THICKNESS, cv2.LINE_AA)
+        # Draw the x-axis
+        cv2.line(annotated_image, (0, origin[1]), (width, origin[1]), (0, 255, 0), 2)
 
-        
-        move_robot(np.array([z_coordinates, x_coordinates, y_coordinates]), hand_mid_points[1 - idx][1])
+        # Draw the y-axis
+        cv2.line(annotated_image, (origin[0], 0), (origin[0], height), (0, 255, 0), 2)
 
+        # display locked status
+        cv2.putText(annotated_image, "Locked" if locked else "Unlocked", (int(width*0.1), int(height*0.1)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0) if not locked else (0, 0, 255), 2)
 
-        # Plot hand landmarks in 3D
-        #ax.scatter(z_coordinates ,x_coordinates, y_coordinates, c=np.array(colors)/255, marker='o')
-        #ax.set_xlim([-0.5, 0.5])
-        #ax.set_ylim([0, 1])
-        #ax.set_zlim3d([-1, 0])
-                
-        #define viewing angle
-        #ax.view_init(elev=0, azim=0)
+        move_robot(lookup_tables, np.array([z_coordinates, x_coordinates, y_coordinates]), second_hand_landmarks)
 
     return annotated_image
+
 
 def dist(a, b):
     return (np.sum((a - b)**2))**0.5
 
+
 def finger_len(points, joints):
     total = 0
     for idx in range(len(joints)-1):
-        total += dist(points[:,joints[idx]],points[:,joints[idx+1]])
+        total += dist(points[:, joints[idx]], points[:, joints[idx+1]])
     return total
 
 
-
-
 def measure_fingers(points):
-    finger_lens = np.array([finger_len(points,[2,3,4]), finger_len(points,[5,6,7,8]), finger_len(points,[9,10,11,12]), finger_len(points,[13,14,15,16]), finger_len(points,[17,18,19,20])])
-    palm_size = np.array([dist(points[:,5],points[:,17]),dist(points[:,0],points[:,17])])
+    palm_size = dist(points[:, 5], points[:, 17])
 
-    return dist(points[:,8],points[:,4])/palm_size[0]
-
-
-def gen_lt(l1, l2):
-    l1 = 5
-    l2 = 5
+    return dist(points[:, 8], points[:, 4])/palm_size
 
 
-    def alfa(theta1,theta2):
-        return l1*np.cos(theta1) + l2*np.cos(theta1 + theta2 - np.pi)
-        
-    def z(theta1,theta2):
-        return l1*np.sin(theta1) + l2*np.sin(theta1 + theta2 - np.pi)
+def alfa(theta1, theta2):
+    return L1*np.cos(theta1) + L2*np.cos(theta1 + theta2 - np.pi)
 
-    t_alfa = np.zeros((vmax - vmin +1, vmax - vmin + 1))
-    t_z = np.zeros((vmax - vmin +1, vmax - vmin + 1))
 
-    for n in range(vmin, vmax +1):
-        for m in range(vmin, vmax +1):
-            t_alfa[n - vmin, m - vmin] = alfa(n/255*np.pi,m/255*np.pi)
-            t_z[n - vmin, m - vmin] = z(n/255*np.pi,m/255*np.pi)
+def z(theta1, theta2):
+    return L1*np.sin(theta1) + L2*np.sin(theta1 + theta2 - np.pi)
+
+def deg2rad(deg):
+    return deg*np.pi/180
+
+def gen_lt():
+    t_alfa = np.zeros((VMAX - VMIN + 1, VMAX - VMIN + 1))
+    t_z = np.zeros((VMAX - VMIN + 1, VMAX - VMIN + 1))
+    for n in range(VMIN, VMAX + 1):
+        for m in range(VMIN, VMAX + 1):
+            #n is V1, m is V2
+            nm = [n*-0.0211 + 3.5848, m*0.0178 + 0.3473]
+            t_alfa[n - VMIN, m - VMIN] = alfa(*nm)
+            t_z[n - VMIN, m - VMIN] = z(*nm)
+
 
     return [t_alfa, t_z]
 
+def recognize_locked_gesture(points):
+    """
+    Recognizes the gesture of the off hand
+
+    If the locked was changed in the last 10 frames, it will return the current locked status.
+    Else, it will change the locked status if the fingers are closed.
+    """
+
+    global locked
+    global locked_timer
+
+    if locked_timer > 0:
+        locked_timer -= 1
+        return locked
+    points = [(points.landmark[i].x, points.landmark[i].y, points.landmark[i].z) for i in range(len(points.landmark))]
+
+    # Set up hysterisis thresholds
+    threshold_to_activate = 0.7
+
+    if measure_fingers(np.array(points).T) >= threshold_to_activate:
+        return locked
+    locked_timer = 10
+    return not locked
 
 
-def move_robot(main_points, second_hand_bottom):
-    reach = 5
-    
+
+def move_robot(lookup_tables, main_points, second_hand_points):
+    global voltages, locked 
+
     fingers = measure_fingers(main_points)
-    hand_mid_point = (main_points[:,5]+main_points[:,9]+main_points[:,13]+main_points[:,17]+4*main_points[:,0])/8
+    hand_mid_point = (main_points[:, 5] + main_points[:, 9] + main_points[:, 13] + main_points[:, 17]+4*main_points[:, 0]) / 8
+    second_hand_y = (second_hand_points.landmark[5].y + second_hand_points.landmark[9].y + second_hand_points.landmark[13].y + second_hand_points.landmark[17].y + 4*second_hand_points.landmark[0].y)/8
 
 
-    min_height = 0.1
-    max_height = 10
-    screen_margins = (0.1,0.8)
+    z = (1 - second_hand_y - SCREEN_MARGINS[1][0])/(SCREEN_MARGINS[1][1] - SCREEN_MARGINS[1][0])
 
-    z = max(0, min((second_hand_bottom + 1 - screen_margins[0])/(screen_margins[1]-screen_margins[0]), 1)) * (max_height-min_height) + min_height
+    x = ((hand_mid_point[1] - SCREEN_MARGINS[0][0])/(SCREEN_MARGINS[0][1] - SCREEN_MARGINS[0][0]) - 0.5) * 2
+    y = (hand_mid_point[2] - SCREEN_MARGINS[1][0])/(SCREEN_MARGINS[1][1] - SCREEN_MARGINS[1][0])
 
+    desired_coords = np.array([x, y, z])
 
+    locked = recognize_locked_gesture(second_hand_points)
 
-    desired_coords = np.array([2*(hand_mid_point[1]-0.5)*reach, (hand_mid_point[2]+1)*reach,z])
+    #check if desired_coords is reachable
+    if np.any(np.abs(desired_coords) >1) or np.any(np.abs(desired_coords) < 0):
+        print("Desired coordinates out of reach", desired_coords)
+        return
 
+    desired_coords = desired_coords*REACH
 
-    teta0 = (np.arctan(desired_coords[1]/desired_coords[0])/np.pi)%1
+    teta0 = -np.arctan(desired_coords[0]/desired_coords[1])
 
     alfa = (desired_coords[1]**2 + desired_coords[0]**2)**0.5
+
+    dist_vector = np.linspace(VMIN,VMAX, VMAX - VMIN+1)
+    # changing its size to be able to subtract it from the lookup table
+    dist_table_hor = np.tile(dist_vector, (VMAX - VMIN + 1, 1))   - voltages[1]
+    dist_table_ver = np.tile(dist_vector, (VMAX - VMIN + 1, 1)).T - voltages[2]
+
+    error_table = (lookup_tables[0]-alfa)**2 + (lookup_tables[1]-desired_coords[2])**2 + 0.001*(dist_table_hor**2 + dist_table_ver**2)
     
-    table_math = (lookup_tables[0]-alfa)**2 + (lookup_tables[1]-desired_coords[2])**2
-
-    idx = np.argmin(table_math)
+    idx = np.argmin(error_table)
 
 
-    V0 = int((teta0)*(vmax_claw - vmin) + vmin)
-    V1 = idx//(vmax - vmin +1) + vmin
-    V2 = idx%(vmax - vmin +1) + vmin
-    V3 = (np.arcsin(min(max(fingers-0.3,0),1))*2/np.pi)*(vmax - vmin) + vmin
-
-
-    claw_sim.update_arm_plot(robot_arm, random_v=False, voltages=[V0, V1, V2, V3])
-
-
-
-
-# Initialize Mediapipe Hands model
-mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5)
-
-# Open webcam
-cap = cv2.VideoCapture(0)
-
-# Create a figure for 3D scatterplot
-#fig = plt.figure()
-#ax = fig.add_subplot(111, projection='3d')
-
-robot_arm = claw_sim.Sunfounder()
-lookup_tables = gen_lt(5,3)
-
-while cap.isOpened():
-
-    success, image = cap.read()
-    if not success:
-        print("Ignoring empty camera frame.")
-        continue
-
-    # Flip the image horizontally for a later selfie-view display
-    image = cv2.flip(image, 1)
-
-    # Convert the BGR image to RGB
-    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-    # Detect hand landmarks from the input image
-    results = hands.process(image_rgb)
-
-    if results.multi_hand_landmarks:
-        # Visualize the hand landmarks
-        annotated_image = draw_landmarks_on_image(image, results)
-        cv2.imshow('Hand Landmarks Detection', annotated_image)
-        plt.pause(0.001)  # Necessary for real-time updating of the plot
-        #ax.cla()  # Clear the scatter plot for the next frame
-
+    V0 = int((teta0+1.3158)/0.0147)
+    V1 = int(idx // (VMAX - VMIN + 1) + VMIN)
+    V2 = int(idx % (VMAX - VMIN + 1) + VMIN)
+    if not(locked):
+        V3 = int((1 - min(max(fingers - 0.3, 0), 1))*(VMAX_CLAW - VMIN_CLAW) + VMIN_CLAW)
     else:
-        cv2.imshow('Hand Landmarks Detection', image)
+        V3 = voltages[3]
 
-    if cv2.waitKey(5) & 0xFF == 27:  # Press 'Esc' to exit
-        break
+    voltages = [V0, V1, V2, V3]
+    uc.send(voltages)
 
 
-# Release resources
-cap.release()
-cv2.destroyAllWindows()
+def main():
+    # * Initialize Mediapipe Hands model
+    mp_hands = mp.solutions.hands
+    hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5)
+
+    # * Open webcam
+    cap = cv2.VideoCapture(1)
+
+    lookup_tables = gen_lt()
+
+    while cap.isOpened():
+
+        success, image = cap.read()
+        if not success:
+            print("Ignoring empty camera frame.")
+            continue
+
+        # * Flip the image horizontally for a later selfie-view display
+        image = transform_camera(image)
+
+        # * Convert the BGR image to RGB
+        if GLOVES:
+            image_to_process = image
+        else:
+            image_to_process = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        # * Detect hand landmarks from the input image
+        results = hands.process(image_to_process)
+
+        if results.multi_hand_landmarks:
+            # * Visualize the hand landmarks
+            annotated_image = draw_landmarks_on_image(image, results, lookup_tables)
+            cv2.imshow('Hand Landmarks Detection', annotated_image)
+            plt.pause(0.0001)  # Necessary for real-time updating of the plot
+
+        else:
+            cv2.imshow('Hand Landmarks Detection', image)
+
+        if cv2.waitKey(5) & 0xFF == 27:  # Press 'Esc' to exit
+            break
+
+    # * Release resources
+    cap.release()
+    cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
