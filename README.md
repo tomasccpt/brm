@@ -1,4 +1,4 @@
-# SunFounder Robot Arm Control with Google Mediapipe
+# Mirror Grip
 
 ## Description
 
