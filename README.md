@@ -20,7 +20,7 @@ pip install -r requirements.txt
 
 ## Usage
 
-To control the physical robot arm using hand gestures, make sure you have both the robot and the camera connected to your computer. Then, using the environment, run the script 'hand_landmarker_with_robot.py'
+To control the physical robot arm using hand gestures, make sure you have both the robot and the camera connected to your computer. Then, using the environment described in requirements.txt, run the script 'hand_landmarker_with_robot.py'
 
 ## Credits
 
